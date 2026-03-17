@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Water Quality Monitoring Dashboard</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #0f172a;
+            color: white;
+            text-align: center;
+        }
+        h1 {
+            margin-top: 20px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            padding: 20px;
+        }
+        .card {
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 10px;
+        }
+        canvas {
+            background: white;
+        }
+        .status {
+            font-size: 20px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>Water Quality Monitoring System</h1>
+
+<div class="container">
+    <div class="card"><canvas id="tempChart"></canvas></div>
+    <div class="card"><canvas id="ecChart"></canvas></div>
+    <div class="card"><canvas id="salChart"></canvas></div>
+    <div class="card"><canvas id="phChart"></canvas></div>
+    <div class="card"><canvas id="tdsChart"></canvas></div>
+
+    <div class="card">
+        <h2>Status</h2>
+        <div id="currentStatus" class="status"></div>
+        <div id="futureStatus" class="status"></div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+const rawChannelID = "3270755";
+const rawAPI = "Y7TTN9EJDLXY1B26";
+
+const analysisChannelID = "3303145";
+const analysisAPI = "08FNAI0NAMHJKB2Z";
+
+// Fetch RAW DATA
+async function getRawData() {
+    const res = await fetch(`https://api.thingspeak.com/channels/${rawChannelID}/feeds.json?api_key=${rawAPI}&results=50`);
+    return await res.json();
+}
+
+// Fetch ANALYSIS DATA
+async function getAnalysisData() {
+    const res = await fetch(`https://api.thingspeak.com/channels/${analysisChannelID}/feeds.json?api_key=${analysisAPI}&results=50`);
+    return await res.json();
+}
+
+// Create chart
+function createChart(ctx, label, raw, pred) {
+    return new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: raw.map((_, i) => i),
+            datasets: [
+                {
+                    label: "Measured",
+                    data: raw,
+                    borderWidth: 2
+                },
+                {
+                    label: "Predicted",
+                    data: pred,
+                    borderWidth: 2
+                }
+            ]
+        }
+    });
+}
+
+async function loadData() {
+    const rawData = await getRawData();
+    const analysisData = await getAnalysisData();
+
+    const feeds1 = rawData.feeds;
+    const feeds2 = analysisData.feeds;
+
+    if (feeds1.length === 0) {
+        alert("No raw data yet.");
+        return;
+    }
+
+    // RAW
+    const temp = feeds1.map(f => Number(f.field1));
+    const ec = feeds1.map(f => Number(f.field2));
+    const sal = feeds1.map(f => Number(f.field3));
+    const ph = feeds1.map(f => Number(f.field4));
+    const tds = feeds1.map(f => Number(f.field5));
+
+    // PREDICTED (handle empty case)
+    let temp_p=[], ec_p=[], sal_p=[], ph_p=[], tds_p=[];
+    let current = "NO DATA";
+    let future = "NO DATA";
+
+    if (feeds2.length > 0) {
+        temp_p = feeds2.map(f => Number(f.field1));
+        ec_p = feeds2.map(f => Number(f.field2));
+        sal_p = feeds2.map(f => Number(f.field3));
+        ph_p = feeds2.map(f => Number(f.field4));
+        tds_p = feeds2.map(f => Number(f.field5));
+
+        const last = feeds2[feeds2.length - 1];
+
+        current = (last.field6 == 1) ? "SAFE" : "UNSAFE";
+        future = (last.field7 == 1) ? "LIKELY SAFE" : "POSSIBLY UNSAFE";
+    }
+
+    // Charts
+    createChart(document.getElementById("tempChart"), "Temp", temp, temp_p);
+    createChart(document.getElementById("ecChart"), "EC", ec, ec_p);
+    createChart(document.getElementById("salChart"), "Salinity", sal, sal_p);
+    createChart(document.getElementById("phChart"), "pH", ph, ph_p);
+    createChart(document.getElementById("tdsChart"), "TDS", tds, tds_p);
+
+    // Status
+    document.getElementById("currentStatus").innerText = "Current: " + current;
+    document.getElementById("futureStatus").innerText = "Future: " + future;
+}
+
+loadData();
+</script>
+
+</body>
+</html>
