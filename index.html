@@ -1,321 +1,190 @@
-<!DOCTYPE html>
 <html>
 <head>
     <title>Water Quality Monitoring Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-
         body {
-            font-family: Arial, sans-serif;
+            font-family: Arial;
             background: #0f172a;
             color: white;
-        }
-
-        header {
             text-align: center;
-            padding: 24px 20px 12px;
         }
-
-        header h1 {
-            font-size: 22px;
-            font-weight: 600;
-            margin-bottom: 6px;
+        h1 {
+            margin-top: 20px;
         }
-
-        #ws-status {
-            display: inline-block;
-            font-size: 13px;
-            padding: 4px 12px;
-            border-radius: 20px;
-            background: #1e293b;
-            color: #94a3b8;
-        }
-
-        #ws-status.connected    { color: #4ade80; }
-        #ws-status.disconnected { color: #f87171; }
-
         .container {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 16px;
-            padding: 16px;
-        }
-
-        .card {
-            background: #1e293b;
-            padding: 16px;
-            border-radius: 12px;
-        }
-
-        .card h2 {
-            font-size: 14px;
-            font-weight: 500;
-            color: #94a3b8;
-            margin-bottom: 10px;
-        }
-
-        .status-card {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            gap: 16px;
-            min-height: 120px;
-        }
-
-        .status-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 16px;
-        }
-
-        .status-badge {
-            padding: 4px 14px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        .safe   { background: #14532d; color: #4ade80; }
-        .unsafe { background: #7f1d1d; color: #f87171; }
-        .unknown { background: #1e293b; color: #64748b; border: 1px solid #334155; }
-    </style>
-</head>
-
-<body>
-
-<header>
-    <h1>Water Quality Monitoring System</h1>
-    <span id="ws-status">● Connecting...</span>
-</header>
-
-<div class="container">
-    <div class="card"><canvas id="tempChart"></canvas></div>
-    <div class="card"><canvas id="ecChart"></canvas></div>
-    <div class="card"><canvas id="salChart"></canvas></div>
-    <div class="card"><canvas id="phChart"></canvas></div>
-    <div class="card"><canvas id="tdsChart"></canvas></div>
-
-    <div class="card status-card">
-        <h2>Water Quality Status</h2>
-        <div class="status-item">
-            <span>Current</span>
-            <span id="currentStatus" class="status-badge unknown">—</span>
-        </div>
-        <div class="status-item">
-            <span>Predicted</span>
-            <span id="futureStatus" class="status-badge unknown">—</span>
-        </div>
-        <div style="font-size:12px; color:#475569; margin-top:4px;">
-            Last reading: <span id="lastTimestamp">—</span>
-        </div>
+@@ -51,45 +49,73 @@ <h2>Status</h2>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script>
-// ─────────────────────────────────────────────
-//  CONFIG
-// ─────────────────────────────────────────────
-const PI_IP              = "YOUR_PI_IP_HERE";   // e.g. "192.168.1.42"
-const WS_PORT            = 8765;
+const rawChannelID = "3270755";
+const rawAPI = "Y7TTN9EJDLXY1B26";
 
-const analysisChannelID  = "3303145";
-const analysisAPI        = "08FNAI0NAMHJKB2Z";
+const analysisChannelID = "3303145";
+const analysisAPI = "08FNAI0NAMHJKB2Z";
 
-const MAX_POINTS         = 50;    // max live points shown per chart
+// Fetch RAW DATA
+// FETCH DATA
+async function getRawData() {
+    const res = await fetch(`https://api.thingspeak.com/channels/${rawChannelID}/feeds.json?api_key=${rawAPI}&results=50`);
+    const res = await fetch(`https://api.thingspeak.com/channels/${rawChannelID}/feeds.json?api_key=${rawAPI}&results=20`);
+    return await res.json();
+}
 
-// ─────────────────────────────────────────────
-//  CHART SETUP
-// ─────────────────────────────────────────────
-const chartDefaults = {
-    type: "line",
-    options: {
-        animation: false,
-        responsive: true,
-        plugins: {
-            legend: { labels: { color: "#94a3b8", font: { size: 12 } } },
-            title:  { display: true, color: "#e2e8f0", font: { size: 13 } }
+// Fetch ANALYSIS DATA
+async function getAnalysisData() {
+    const res = await fetch(`https://api.thingspeak.com/channels/${analysisChannelID}/feeds.json?api_key=${analysisAPI}&results=50`);
+    const res = await fetch(`https://api.thingspeak.com/channels/${analysisChannelID}/feeds.json?api_key=${analysisAPI}&results=10`);
+    return await res.json();
+}
+
+// Create chart
+function createChart(ctx, label, raw, pred) {
+    return new Chart(ctx, {
+// CREATE CHART WITH TIME SHIFT
+function createChart(ctx, title, raw, pred, timeRaw, timePred, yLabel) {
+
+    let fullTime = timeRaw.concat(timePred);
+
+    let paddedRaw = raw.concat(new Array(pred.length).fill(null));
+    let paddedPred = new Array(raw.length).fill(null).concat(pred);
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: raw.map((_, i) => i),
+            labels: fullTime,
+            datasets: [
+                {
+                    label: "Measured",
+                    data: raw,
+                    borderWidth: 2
+                    data: paddedRaw,
+                    borderColor: "blue",
+                    fill: false
+                },
+                {
+                    label: "Predicted",
+                    data: pred,
+                    borderWidth: 2
+                    data: paddedPred,
+                    borderColor: "red",
+                    borderDash: [5,5],
+                    fill: false
+                }
+            ]
         },
-        scales: {
-            x: {
-                ticks: { color: "#64748b", maxTicksLimit: 8, font: { size: 11 } },
-                grid:  { color: "#1e3a5f22" }
+        options: {
+            plugins: {
+                title: {
+                    display: true,
+                    text: title
+                }
             },
-            y: {
-                ticks: { color: "#64748b", font: { size: 11 } },
-                grid:  { color: "#1e3a5f44" },
-                title: { display: true, color: "#64748b", font: { size: 11 } }
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: "Time"
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: yLabel
+                    }
+                }
             }
         }
+    });
+}
+@@ -101,50 +127,55 @@ <h2>Status</h2>
+    const feeds1 = rawData.feeds;
+    const feeds2 = analysisData.feeds;
+
+    if (feeds1.length === 0) {
+        alert("No raw data yet.");
+        return;
     }
-};
+    if (feeds1.length === 0) return;
 
-function makeChart(id, title, yLabel, liveColor, predColor) {
-    const ctx = document.getElementById(id);
-    const cfg = JSON.parse(JSON.stringify(chartDefaults));
-    cfg.options.plugins.title.text = title;
-    cfg.options.scales.y.title.text = yLabel;
-    cfg.data = {
-        labels: [],
-        datasets: [
-            {
-                label: "Measured",
-                data: [],
-                borderColor: liveColor,
-                backgroundColor: liveColor + "22",
-                borderWidth: 2,
-                pointRadius: 3,
-                fill: false,
-                tension: 0.3,
-            },
-            {
-                label: "Predicted",
-                data: [],
-                borderColor: predColor,
-                backgroundColor: predColor + "22",
-                borderWidth: 2,
-                borderDash: [5, 5],
-                pointRadius: 2,
-                fill: false,
-                tension: 0.3,
-            }
-        ]
-    };
-    return new Chart(ctx, cfg);
-}
+    // RAW
+    // RAW VALUES
+    const temp = feeds1.map(f => Number(f.field1));
+    const ec = feeds1.map(f => Number(f.field2));
+    const sal = feeds1.map(f => Number(f.field3));
+    const ph = feeds1.map(f => Number(f.field4));
+    const tds = feeds1.map(f => Number(f.field5));
+    const ec   = feeds1.map(f => Number(f.field2));
+    const sal  = feeds1.map(f => Number(f.field3));
+    const ph   = feeds1.map(f => Number(f.field4));
+    const tds  = feeds1.map(f => Number(f.field5));
 
-const tempChart = makeChart("tempChart", "Temperature vs Time", "°C",      "#38bdf8", "#f87171");
-const ecChart   = makeChart("ecChart",   "EC vs Time",          "µS/cm",   "#a78bfa", "#f87171");
-const salChart  = makeChart("salChart",  "Salinity vs Time",    "ppt",     "#34d399", "#f87171");
-const phChart   = makeChart("phChart",   "pH vs Time",          "pH",      "#fbbf24", "#f87171");
-const tdsChart  = makeChart("tdsChart",  "TDS vs Time",         "mg/L",    "#fb923c", "#f87171");
+    const timeRaw = feeds1.map(f => new Date(f.created_at).toLocaleTimeString());
 
-const liveCharts = [
-    [tempChart, "temperature"],
-    [ecChart,   "ec"],
-    [salChart,  "salinity"],
-    [phChart,   "ph"],
-    [tdsChart,  "tds"],
-];
+    // PREDICTED (handle empty case)
+    // ANALYSIS VALUES
+    let temp_p=[], ec_p=[], sal_p=[], ph_p=[], tds_p=[];
+    let current = "NO DATA";
+    let future = "NO DATA";
+    let timePred=[];
 
-// ─────────────────────────────────────────────
-//  WEBSOCKET — live readings from Pi
-// ─────────────────────────────────────────────
-const wsStatus = document.getElementById("ws-status");
+    if (feeds2.length > 0) {
 
-function connectWebSocket() {
-    const ws = new WebSocket(`ws://${PI_IP}:${WS_PORT}`);
+        temp_p = feeds2.map(f => Number(f.field1));
+        ec_p = feeds2.map(f => Number(f.field2));
+        sal_p = feeds2.map(f => Number(f.field3));
+        ph_p = feeds2.map(f => Number(f.field4));
+        tds_p = feeds2.map(f => Number(f.field5));
+        ec_p   = feeds2.map(f => Number(f.field2));
+        sal_p  = feeds2.map(f => Number(f.field3));
+        ph_p   = feeds2.map(f => Number(f.field4));
+        tds_p  = feeds2.map(f => Number(f.field5));
 
-    ws.onopen = () => {
-        wsStatus.textContent = "● Live";
-        wsStatus.className   = "connected";
-        console.log("[WS] Connected to Pi");
-    };
+        let lastTime = new Date(feeds1[feeds1.length - 1].created_at);
 
-    ws.onmessage = (event) => {
-        const row = JSON.parse(event.data);
-        const t   = new Date(row.timestamp).toLocaleTimeString();
+        for(let i=1;i<=feeds2.length;i++){
+            let t = new Date(lastTime.getTime() + i*15000);
+            timePred.push(t.toLocaleTimeString());
+        }
 
-        liveCharts.forEach(([chart, key]) => {
-            chart.data.labels.push(t);
-            chart.data.datasets[0].data.push(Number(row[key]));
+        const last = feeds2[feeds2.length - 1];
 
-            if (chart.data.labels.length > MAX_POINTS) {
-                chart.data.labels.shift();
-                chart.data.datasets[0].data.shift();
-            }
-            chart.update("none");
-        });
-
-        document.getElementById("lastTimestamp").textContent = t;
-    };
-
-    ws.onclose = () => {
-        wsStatus.textContent = "● Disconnected — retrying in 5s";
-        wsStatus.className   = "disconnected";
-        console.warn("[WS] Disconnected. Reconnecting...");
-        setTimeout(connectWebSocket, 5000);   // auto-reconnect
-    };
-
-    ws.onerror = (err) => {
-        console.error("[WS] Error:", err);
-        ws.close();
-    };
-}
-
-connectWebSocket();
-
-// ─────────────────────────────────────────────
-//  THINGSPEAK — predicted values from ch. 2
-// ─────────────────────────────────────────────
-async function loadPredictions() {
-    try {
-        const res   = await fetch(`https://api.thingspeak.com/channels/${analysisChannelID}/feeds.json?api_key=${analysisAPI}&results=10`);
-        const data  = await res.json();
-        const feeds = data.feeds;
-
-        if (!feeds || feeds.length === 0) return;
-
-        const pred = {
-            temperature: feeds.map(f => Number(f.field1)),
-            ec:          feeds.map(f => Number(f.field2)),
-            salinity:    feeds.map(f => Number(f.field3)),
-            ph:          feeds.map(f => Number(f.field4)),
-            tds:         feeds.map(f => Number(f.field5)),
-        };
-
-        // Space predicted timestamps 15s ahead of now
-        const now = Date.now();
-        const predLabels = feeds.map((_, i) =>
-            new Date(now + (i + 1) * 15000).toLocaleTimeString()
-        );
-
-        liveCharts.forEach(([chart, key]) => {
-            chart.data.datasets[1].data   = pred[key];
-            // Pad labels to cover prediction range if needed
-            const needed = chart.data.labels.length + predLabels.length;
-            predLabels.forEach(l => {
-                if (!chart.data.labels.includes(l)) {
-                    // Don't add to x-axis — predictions float on dataset[1] only
-                }
-            });
-            // Align prediction dataset length to label length with leading nulls
-            const liveLen = chart.data.datasets[0].data.length;
-            chart.data.datasets[1].data =
-                new Array(Math.max(0, liveLen - pred[key].length)).fill(null)
-                .concat(pred[key]);
-            chart.update("none");
-        });
-
-        // Status badges
-        const last = feeds[feeds.length - 1];
-        setStatus("currentStatus", last.field6);
-        setStatus("futureStatus",  last.field7);
-
-    } catch (e) {
-        console.error("[ThingSpeak] Failed to load predictions:", e);
+        current = (last.field6 == 1) ? "SAFE" : "UNSAFE";
+        future = (last.field7 == 1) ? "LIKELY SAFE" : "POSSIBLY UNSAFE";
     }
-}
+        document.getElementById("currentStatus").innerText =
+            "Current: " + (last.field6 == 1 ? "SAFE" : "UNSAFE");
 
-function setStatus(id, val) {
-    const el = document.getElementById(id);
-    if (val == null || val === "") {
-        el.textContent = "—";
-        el.className   = "status-badge unknown";
-    } else if (Number(val) === 1) {
-        el.textContent = "SAFE";
-        el.className   = "status-badge safe";
-    } else {
-        el.textContent = "UNSAFE";
-        el.className   = "status-badge unsafe";
+    // Charts
+    createChart(document.getElementById("tempChart"), "Temp", temp, temp_p);
+    createChart(document.getElementById("ecChart"), "EC", ec, ec_p);
+    createChart(document.getElementById("salChart"), "Salinity", sal, sal_p);
+    createChart(document.getElementById("phChart"), "pH", ph, ph_p);
+    createChart(document.getElementById("tdsChart"), "TDS", tds, tds_p);
+        document.getElementById("futureStatus").innerText =
+            "Future: " + (last.field7 == 1 ? "SAFE" : "UNSAFE");
     }
+
+    // Status
+    document.getElementById("currentStatus").innerText = "Current: " + current;
+    document.getElementById("futureStatus").innerText = "Future: " + future;
+    // CREATE CHARTS
+    createChart(tempChart, "Temperature vs Time", temp, temp_p, timeRaw, timePred, "°C");
+    createChart(ecChart, "EC vs Time", ec, ec_p, timeRaw, timePred, "mS/cm");
+    createChart(salChart, "Salinity vs Time", sal, sal_p, timeRaw, timePred, "ppt");
+    createChart(phChart, "pH vs Time", ph, ph_p, timeRaw, timePred, "pH");
+    createChart(tdsChart, "TDS vs Time", tds, tds_p, timeRaw, timePred, "ppm");
 }
 
-// Load predictions on start, then refresh every 30s
-loadPredictions();
-setInterval(loadPredictions, 30000);
+loadData();
 </script>
 
 </body>
+</html>
 </html>
