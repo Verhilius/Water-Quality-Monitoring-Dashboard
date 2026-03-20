@@ -34,7 +34,29 @@
             border-radius: 10px;
         }
 
-        canvas { background: white; border-radius: 6px; }
+        .chart-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        .inset-chart {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 32%;
+            height: 40%;
+            background: rgba(255, 255, 255, 0.93);
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            padding: 2px;
+            z-index: 10;
+        }
+
+        canvas {
+            background: white;
+            border-radius: 6px;
+            width: 100% !important;
+        }
 
         .status-card {
             background: #1e293b;
@@ -98,9 +120,9 @@
             margin-top: 4px;
         }
 
-        /* Responsive */
         @media (max-width: 768px) {
             .container { grid-template-columns: 1fr; }
+            .inset-chart { width: 40%; height: 35%; }
         }
     </style>
 </head>
@@ -110,14 +132,43 @@
 <h1>🌊 Water Quality Monitoring System</h1>
 
 <div class="container">
-    <div class="card"><canvas id="tempChart"></canvas></div>
-    <div class="card"><canvas id="ecChart"></canvas></div>
-    <div class="card"><canvas id="salChart"></canvas></div>
-    <div class="card"><canvas id="phChart"></canvas></div>
-    <div class="card"><canvas id="tdsChart"></canvas></div>
+
+    <div class="card">
+        <div class="chart-wrapper">
+            <canvas id="tempChart"></canvas>
+            <div class="inset-chart"><canvas id="tempInset"></canvas></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="chart-wrapper">
+            <canvas id="ecChart"></canvas>
+            <div class="inset-chart"><canvas id="ecInset"></canvas></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="chart-wrapper">
+            <canvas id="salChart"></canvas>
+            <div class="inset-chart"><canvas id="salInset"></canvas></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="chart-wrapper">
+            <canvas id="phChart"></canvas>
+            <div class="inset-chart"><canvas id="phInset"></canvas></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="chart-wrapper">
+            <canvas id="tdsChart"></canvas>
+            <div class="inset-chart"><canvas id="tdsInset"></canvas></div>
+        </div>
+    </div>
 
     <div class="status-card">
-
         <div>
             <h2>📡 Latest Raw Readings</h2>
             <table class="readings-table">
@@ -162,15 +213,15 @@
         <p class="last-updated">
             Last prediction update: <span id="lastUpdated">--</span>
         </p>
-
     </div>
+
 </div>
 
 <script type="module">
 import { initializeApp }             from "https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js";
 import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-database.js";
 
-// ===== PASTE YOUR FIREBASE CONFIG HERE =====
+// ===== FIREBASE CONFIG =====
 const firebaseConfig = {
     apiKey:      "AIzaSyAgWgICxcrEMbrgw6LhXbZzmUymCOMhMXE",
     authDomain:  "thesis-project-38954.firebaseapp.com",
@@ -183,15 +234,16 @@ const database = getDatabase(app);
 
 // ===== CHART DEFINITIONS =====
 const chartConfigs = {
-    temp: { id: 'tempChart', title: 'Temperature vs Time', unit: '°C'    },
-    ec:   { id: 'ecChart',   title: 'EC vs Time',          unit: 'mS/cm' },
-    sal:  { id: 'salChart',  title: 'Salinity vs Time',    unit: 'ppt'   },
-    ph:   { id: 'phChart',   title: 'pH vs Time',          unit: 'pH'    },
-    tds:  { id: 'tdsChart',  title: 'TDS vs Time',         unit: 'ppm'   },
+    temp: { id: 'tempChart', insetId: 'tempInset', title: 'Temperature vs Time', unit: '°C',    field: 'temperature' },
+    ec:   { id: 'ecChart',   insetId: 'ecInset',   title: 'EC vs Time',          unit: 'mS/cm', field: 'ec'          },
+    sal:  { id: 'salChart',  insetId: 'salInset',  title: 'Salinity vs Time',    unit: 'ppt',   field: 'salinity'    },
+    ph:   { id: 'phChart',   insetId: 'phInset',   title: 'pH vs Time',          unit: 'pH',    field: 'ph'          },
+    tds:  { id: 'tdsChart',  insetId: 'tdsInset',  title: 'TDS vs Time',         unit: 'ppm',   field: 'tds'         },
 };
 
-const charts     = {};
-const MAX_POINTS = 20;
+const charts      = {};
+const insetCharts = {};
+const MAX_POINTS  = 20;
 
 const historyData = {
     temp: [], ec: [], sal: [], ph: [], tds: [], times: []
@@ -200,50 +252,86 @@ const historyData = {
 // ===== INIT CHARTS =====
 function initCharts() {
     for (const [key, cfg] of Object.entries(chartConfigs)) {
-        const ctx    = document.getElementById(cfg.id);
-        charts[key]  = new Chart(ctx, {
+
+        // Main chart — raw data only
+        charts[key] = new Chart(document.getElementById(cfg.id), {
             type: 'line',
             data: {
                 labels: [],
-                datasets: [
-                    {
-                        label:       'Measured',
-                        data:        [],
-                        borderColor: 'blue',
-                        fill:        false,
-                        tension:     0.1,
-                        pointRadius: 3,
-                    },
-                    {
-                        label:       'Predicted',
-                        data:        [],
-                        borderColor: 'red',
-                        borderDash:  [5, 5],
-                        fill:        false,
-                        tension:     0.1,
-                        pointRadius: 3,
-                    }
-                ]
+                datasets: [{
+                    label:       'Measured',
+                    data:        [],
+                    borderColor: 'blue',
+                    fill:        false,
+                    tension:     0.1,
+                    pointRadius: 3,
+                }]
             },
             options: {
-                animation: false,
+                animation:  false,
                 responsive: true,
                 plugins: {
-                    title: {
-                        display: true,
-                        text:    cfg.title,
-                        color:   '#1e293b',
-                        font:    { size: 14 }
-                    },
+                    title:   { display: true, text: cfg.title, color: '#1e293b', font: { size: 14 } },
+                    legend:  { labels: { color: '#1e293b' } },
                     tooltip: { mode: 'index', intersect: false }
                 },
                 scales: {
                     x: {
-                        title: { display: true, text: 'Time' },
-                        ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } }
+                        title: { display: true, text: 'Time', color: '#1e293b' },
+                        ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 }, color: '#1e293b' }
                     },
                     y: {
-                        title: { display: true, text: cfg.unit }
+                        title: { display: true, text: cfg.unit, color: '#1e293b' },
+                        ticks: { color: '#1e293b' }
+                    }
+                }
+            }
+        });
+
+        // Inset chart — predicted only
+        insetCharts[key] = new Chart(document.getElementById(cfg.insetId), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label:        'Predicted',
+                    data:         [],
+                    borderColor:  'red',
+                    borderDash:   [4, 4],
+                    borderWidth:  1.5,
+                    fill:         false,
+                    tension:      0.1,
+                    pointRadius:  2,
+                    pointBackgroundColor: 'red',
+                }]
+            },
+            options: {
+                animation:           false,
+                responsive:          true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text:    '📈 Predicted',
+                        color:   '#1e293b',
+                        font:    { size: 9 },
+                        padding: { top: 2, bottom: 2 }
+                    },
+                    legend:  { display: false },
+                    tooltip: { enabled: false }
+                },
+                scales: {
+                    x: {
+                        ticks: { display: false },
+                        grid:  { display: false }
+                    },
+                    y: {
+                        ticks: {
+                            color:         '#1e293b',
+                            font:          { size: 8 },
+                            maxTicksLimit: 4
+                        },
+                        grid: { color: 'rgba(0,0,0,0.05)' }
                     }
                 }
             }
@@ -251,37 +339,37 @@ function initCharts() {
     }
 }
 
-// ===== UPDATE CHARTS =====
-function updateCharts(predictions) {
-    const times   = historyData.times.slice(-MAX_POINTS);
-    const now     = new Date();
-
+// ===== UPDATE MAIN CHARTS =====
+function updateMainCharts() {
+    const times = historyData.times.slice(-MAX_POINTS);
     for (const [key, chart] of Object.entries(charts)) {
-        const fieldMap = { temp: 'temperature', ec: 'ec', sal: 'salinity', ph: 'ph', tds: 'tds' };
-        const rawData  = historyData[key].slice(-MAX_POINTS);
+        chart.data.labels           = times;
+        chart.data.datasets[0].data = historyData[key].slice(-MAX_POINTS);
+        chart.update();
+    }
+}
 
-        let predData  = [];
-        let predTimes = [];
+// ===== UPDATE INSET CHARTS =====
+function updateInsetCharts(predictions) {
+    if (!predictions) return;
+    const now = new Date();
 
-        if (predictions) {
-            for (let i = 1; i <= 15; i++) {
-                const point = predictions[`point${i}`];
-                if (point) {
-                    predData.push(point[fieldMap[key]]);
-                    const t = new Date(now.getTime() + i * 1000);
-                    predTimes.push(t.toLocaleTimeString());
-                }
+    for (const [key, cfg] of Object.entries(chartConfigs)) {
+        const predData  = [];
+        const predTimes = [];
+
+        for (let i = 1; i <= 15; i++) {
+            const point = predictions[`point${i}`];
+            if (point && point[cfg.field] !== undefined) {
+                predData.push(point[cfg.field]);
+                const t = new Date(now.getTime() + i * 1000);
+                predTimes.push(t.toLocaleTimeString());
             }
         }
 
-        const fullTimes  = times.concat(predTimes);
-        const paddedRaw  = rawData.concat(new Array(predData.length).fill(null));
-        const paddedPred = new Array(rawData.length).fill(null).concat(predData);
-
-        chart.data.labels           = fullTimes;
-        chart.data.datasets[0].data = paddedRaw;
-        chart.data.datasets[1].data = paddedPred;
-        chart.update();
+        insetCharts[key].data.labels           = predTimes;
+        insetCharts[key].data.datasets[0].data = predData;
+        insetCharts[key].update();
     }
 }
 
@@ -293,16 +381,21 @@ onValue(ref(database, 'sensors'), (snapshot) => {
     const d = snapshot.val();
     if (!d) return;
 
-    // Update live readings display
+    // Update live readings
     document.getElementById('live-temp').innerText = Number(d.temperature).toFixed(2);
     document.getElementById('live-ec').innerText   = Number(d.ec).toFixed(2);
     document.getElementById('live-sal').innerText  = Number(d.salinity).toFixed(2);
     document.getElementById('live-ph').innerText   = Number(d.ph).toFixed(2);
     document.getElementById('live-tds').innerText  = Number(d.tds).toFixed(2);
 
+    // Current status from Python
+    const currentEl     = document.getElementById('currentStatus');
+    const isSafe        = d.current_status == 1;
+    currentEl.innerText = 'Current: ' + (isSafe ? 'SAFE ✅' : 'UNSAFE ❌');
+    currentEl.className = 'status ' + (isSafe ? 'safe' : 'unsafe');
+
     // Build history
-    const now = new Date().toLocaleTimeString();
-    historyData.times.push(now);
+    historyData.times.push(new Date().toLocaleTimeString());
     historyData.temp.push(d.temperature);
     historyData.ec.push(d.ec);
     historyData.sal.push(d.salinity);
@@ -314,7 +407,7 @@ onValue(ref(database, 'sensors'), (snapshot) => {
         if (historyData[key].length > MAX_POINTS) historyData[key].shift();
     }
 
-    updateCharts(latestPredictions);
+    updateMainCharts();
 });
 
 // Predictions from MATLAB via Firebase
@@ -324,22 +417,15 @@ onValue(ref(database, 'predictions'), (snapshot) => {
 
     latestPredictions = d;
 
-    // Current status
-    const currentEl       = document.getElementById('currentStatus');
-    const isSafe          = d.current_status == 1;
-    currentEl.innerText   = 'Current: ' + (isSafe ? 'SAFE ✅' : 'UNSAFE ❌');
-    currentEl.className   = 'status ' + (isSafe ? 'safe' : 'unsafe');
+    // Future status from MATLAB
+    const futureEl   = document.getElementById('futureStatus');
+    const futureSafe = d.point1 && d.point1.status == 1;
+    futureEl.innerText  = 'Future: '  + (futureSafe ? 'SAFE ✅' : 'UNSAFE ❌');
+    futureEl.className  = 'status '   + (futureSafe ? 'safe' : 'unsafe');
 
-    // Future status (use point1 as next predicted status)
-    const futureEl        = document.getElementById('futureStatus');
-    const futureSafe      = d.point1 && d.point1.status == 1;
-    futureEl.innerText    = 'Future: '  + (futureSafe ? 'SAFE ✅' : 'UNSAFE ❌');
-    futureEl.className    = 'status '   + (futureSafe ? 'safe' : 'unsafe');
-
-    // Last updated timestamp
     document.getElementById('lastUpdated').innerText = d.last_updated || '--';
 
-    updateCharts(d);
+    updateInsetCharts(d);
 });
 
 // ===== START =====
