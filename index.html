@@ -1,39 +1,113 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Water Quality Monitoring Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            font-family: Arial;
+            font-family: Arial, sans-serif;
             background: #0f172a;
             color: white;
-            text-align: center;
         }
+
+        h1 {
+            text-align: center;
+            padding: 20px;
+            font-size: 1.8em;
+            color: #e2e8f0;
+        }
+
         .container {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 20px;
             padding: 20px;
         }
+
         .card {
             background: #1e293b;
             padding: 15px;
             border-radius: 10px;
         }
-        canvas {
-            background: white;
+
+        canvas { background: white; border-radius: 6px; }
+
+        .status-card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
+
+        .status-card h2 {
+            color: #94a3b8;
+            font-size: 1em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+
+        .readings-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .readings-table td {
+            padding: 6px 4px;
+            font-size: 0.95em;
+        }
+
+        .readings-table td:nth-child(2) {
+            text-align: right;
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #38bdf8;
+        }
+
+        .readings-table td:nth-child(3) {
+            text-align: left;
+            padding-left: 6px;
+            color: #94a3b8;
+            font-size: 0.85em;
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid #334155;
+            margin: 6px 0;
+        }
+
         .status {
-            font-size: 20px;
-            margin-top: 10px;
+            font-size: 1.2em;
+            font-weight: bold;
+            padding: 4px 0;
+        }
+
+        .safe   { color: #22c55e; }
+        .unsafe { color: #ef4444; }
+
+        .last-updated {
+            font-size: 0.75em;
+            color: #64748b;
+            margin-top: 4px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 
 <body>
 
-<h1>Water Quality Monitoring System</h1>
+<h1>🌊 Water Quality Monitoring System</h1>
 
 <div class="container">
     <div class="card"><canvas id="tempChart"></canvas></div>
@@ -42,139 +116,234 @@
     <div class="card"><canvas id="phChart"></canvas></div>
     <div class="card"><canvas id="tdsChart"></canvas></div>
 
-    <div class="card">
-        <h2>Status</h2>
-        <div id="currentStatus" class="status"></div>
-        <div id="futureStatus" class="status"></div>
+    <div class="status-card">
+
+        <div>
+            <h2>📡 Latest Raw Readings</h2>
+            <table class="readings-table">
+                <tr>
+                    <td>🌡️ Temperature</td>
+                    <td id="live-temp">--</td>
+                    <td>°C</td>
+                </tr>
+                <tr>
+                    <td>⚡ EC</td>
+                    <td id="live-ec">--</td>
+                    <td>mS/cm</td>
+                </tr>
+                <tr>
+                    <td>🌊 Salinity</td>
+                    <td id="live-sal">--</td>
+                    <td>ppt</td>
+                </tr>
+                <tr>
+                    <td>🧪 pH</td>
+                    <td id="live-ph">--</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td>💧 TDS</td>
+                    <td id="live-tds">--</td>
+                    <td>ppm</td>
+                </tr>
+            </table>
+        </div>
+
+        <hr class="divider">
+
+        <div>
+            <h2>🔒 Status</h2>
+            <div id="currentStatus" class="status">Current: --</div>
+            <div id="futureStatus"  class="status">Future: --</div>
+        </div>
+
+        <hr class="divider">
+
+        <p class="last-updated">
+            Last prediction update: <span id="lastUpdated">--</span>
+        </p>
+
     </div>
 </div>
 
-<script>
-const rawChannelID = "3270755";
-const rawAPI = "Y7TTN9EJDLXY1B26";
+<script type="module">
+import { initializeApp }             from "https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js";
+import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-database.js";
 
-const analysisChannelID = "3303145";
-const analysisAPI = "08FNAI0NAMHJKB2Z";
+// ===== PASTE YOUR FIREBASE CONFIG HERE =====
+const firebaseConfig = {
+    apiKey:      "YOUR_API_KEY",
+    authDomain:  "YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId:   "YOUR_PROJECT_ID",
+};
 
-// FETCH DATA
-async function getRawData() {
-    const res = await fetch(`https://api.thingspeak.com/channels/${rawChannelID}/feeds.json?api_key=${rawAPI}&results=20`);
-    return await res.json();
-}
+const app      = initializeApp(firebaseConfig);
+const database = getDatabase(app);
 
-async function getAnalysisData() {
-    const res = await fetch(`https://api.thingspeak.com/channels/${analysisChannelID}/feeds.json?api_key=${analysisAPI}&results=10`);
-    return await res.json();
-}
+// ===== CHART DEFINITIONS =====
+const chartConfigs = {
+    temp: { id: 'tempChart', title: 'Temperature vs Time', unit: '°C'    },
+    ec:   { id: 'ecChart',   title: 'EC vs Time',          unit: 'mS/cm' },
+    sal:  { id: 'salChart',  title: 'Salinity vs Time',    unit: 'ppt'   },
+    ph:   { id: 'phChart',   title: 'pH vs Time',          unit: 'pH'    },
+    tds:  { id: 'tdsChart',  title: 'TDS vs Time',         unit: 'ppm'   },
+};
 
-// CREATE CHART WITH TIME SHIFT
-function createChart(ctx, title, raw, pred, timeRaw, timePred, yLabel) {
+const charts     = {};
+const MAX_POINTS = 20;
 
-    let fullTime = timeRaw.concat(timePred);
+const historyData = {
+    temp: [], ec: [], sal: [], ph: [], tds: [], times: []
+};
 
-    let paddedRaw = raw.concat(new Array(pred.length).fill(null));
-    let paddedPred = new Array(raw.length).fill(null).concat(pred);
-
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: fullTime,
-            datasets: [
-                {
-                    label: "Measured",
-                    data: paddedRaw,
-                    borderColor: "blue",
-                    fill: false
-                },
-                {
-                    label: "Predicted",
-                    data: paddedPred,
-                    borderColor: "red",
-                    borderDash: [5,5],
-                    fill: false
-                }
-            ]
-        },
-        options: {
-            plugins: {
-                title: {
-                    display: true,
-                    text: title
-                }
-            },
-            scales: {
-                x: {
-                    title: {
-                        display: true,
-                        text: "Time"
+// ===== INIT CHARTS =====
+function initCharts() {
+    for (const [key, cfg] of Object.entries(chartConfigs)) {
+        const ctx    = document.getElementById(cfg.id);
+        charts[key]  = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label:       'Measured',
+                        data:        [],
+                        borderColor: 'blue',
+                        fill:        false,
+                        tension:     0.1,
+                        pointRadius: 3,
+                    },
+                    {
+                        label:       'Predicted',
+                        data:        [],
+                        borderColor: 'red',
+                        borderDash:  [5, 5],
+                        fill:        false,
+                        tension:     0.1,
+                        pointRadius: 3,
                     }
-                },
-                y: {
+                ]
+            },
+            options: {
+                animation: false,
+                responsive: true,
+                plugins: {
                     title: {
                         display: true,
-                        text: yLabel
+                        text:    cfg.title,
+                        color:   '#1e293b',
+                        font:    { size: 14 }
+                    },
+                    tooltip: { mode: 'index', intersect: false }
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Time' },
+                        ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } }
+                    },
+                    y: {
+                        title: { display: true, text: cfg.unit }
                     }
                 }
             }
-        }
-    });
+        });
+    }
 }
 
-async function loadData() {
-    const rawData = await getRawData();
-    const analysisData = await getAnalysisData();
+// ===== UPDATE CHARTS =====
+function updateCharts(predictions) {
+    const times   = historyData.times.slice(-MAX_POINTS);
+    const now     = new Date();
 
-    const feeds1 = rawData.feeds;
-    const feeds2 = analysisData.feeds;
+    for (const [key, chart] of Object.entries(charts)) {
+        const fieldMap = { temp: 'temperature', ec: 'ec', sal: 'salinity', ph: 'ph', tds: 'tds' };
+        const rawData  = historyData[key].slice(-MAX_POINTS);
 
-    if (feeds1.length === 0) return;
+        let predData  = [];
+        let predTimes = [];
 
-    // RAW VALUES
-    const temp = feeds1.map(f => Number(f.field1));
-    const ec   = feeds1.map(f => Number(f.field2));
-    const sal  = feeds1.map(f => Number(f.field3));
-    const ph   = feeds1.map(f => Number(f.field4));
-    const tds  = feeds1.map(f => Number(f.field5));
-
-    const timeRaw = feeds1.map(f => new Date(f.created_at).toLocaleTimeString());
-
-    // ANALYSIS VALUES
-    let temp_p=[], ec_p=[], sal_p=[], ph_p=[], tds_p=[];
-    let timePred=[];
-
-    if (feeds2.length > 0) {
-
-        temp_p = feeds2.map(f => Number(f.field1));
-        ec_p   = feeds2.map(f => Number(f.field2));
-        sal_p  = feeds2.map(f => Number(f.field3));
-        ph_p   = feeds2.map(f => Number(f.field4));
-        tds_p  = feeds2.map(f => Number(f.field5));
-
-        let lastTime = new Date(feeds1[feeds1.length - 1].created_at);
-
-        for(let i=1;i<=feeds2.length;i++){
-            let t = new Date(lastTime.getTime() + i*15000);
-            timePred.push(t.toLocaleTimeString());
+        if (predictions) {
+            for (let i = 1; i <= 15; i++) {
+                const point = predictions[`point${i}`];
+                if (point) {
+                    predData.push(point[fieldMap[key]]);
+                    const t = new Date(now.getTime() + i * 1000);
+                    predTimes.push(t.toLocaleTimeString());
+                }
+            }
         }
 
-        const last = feeds2[feeds2.length - 1];
+        const fullTimes  = times.concat(predTimes);
+        const paddedRaw  = rawData.concat(new Array(predData.length).fill(null));
+        const paddedPred = new Array(rawData.length).fill(null).concat(predData);
 
-        document.getElementById("currentStatus").innerText =
-            "Current: " + (last.field6 == 1 ? "SAFE" : "UNSAFE");
+        chart.data.labels           = fullTimes;
+        chart.data.datasets[0].data = paddedRaw;
+        chart.data.datasets[1].data = paddedPred;
+        chart.update();
+    }
+}
 
-        document.getElementById("futureStatus").innerText =
-            "Future: " + (last.field7 == 1 ? "SAFE" : "UNSAFE");
+// ===== FIREBASE LISTENERS =====
+let latestPredictions = null;
+
+// Live raw sensor readings
+onValue(ref(database, 'sensors'), (snapshot) => {
+    const d = snapshot.val();
+    if (!d) return;
+
+    // Update live readings display
+    document.getElementById('live-temp').innerText = Number(d.temperature).toFixed(2);
+    document.getElementById('live-ec').innerText   = Number(d.ec).toFixed(2);
+    document.getElementById('live-sal').innerText  = Number(d.salinity).toFixed(2);
+    document.getElementById('live-ph').innerText   = Number(d.ph).toFixed(2);
+    document.getElementById('live-tds').innerText  = Number(d.tds).toFixed(2);
+
+    // Build history
+    const now = new Date().toLocaleTimeString();
+    historyData.times.push(now);
+    historyData.temp.push(d.temperature);
+    historyData.ec.push(d.ec);
+    historyData.sal.push(d.salinity);
+    historyData.ph.push(d.ph);
+    historyData.tds.push(d.tds);
+
+    // Keep only last MAX_POINTS
+    for (const key of Object.keys(historyData)) {
+        if (historyData[key].length > MAX_POINTS) historyData[key].shift();
     }
 
-    // CREATE CHARTS
-    createChart(tempChart, "Temperature vs Time", temp, temp_p, timeRaw, timePred, "°C");
-    createChart(ecChart, "EC vs Time", ec, ec_p, timeRaw, timePred, "mS/cm");
-    createChart(salChart, "Salinity vs Time", sal, sal_p, timeRaw, timePred, "ppt");
-    createChart(phChart, "pH vs Time", ph, ph_p, timeRaw, timePred, "pH");
-    createChart(tdsChart, "TDS vs Time", tds, tds_p, timeRaw, timePred, "ppm");
-}
+    updateCharts(latestPredictions);
+});
 
-loadData();
+// Predictions from MATLAB via Firebase
+onValue(ref(database, 'predictions'), (snapshot) => {
+    const d = snapshot.val();
+    if (!d) return;
+
+    latestPredictions = d;
+
+    // Current status
+    const currentEl       = document.getElementById('currentStatus');
+    const isSafe          = d.current_status == 1;
+    currentEl.innerText   = 'Current: ' + (isSafe ? 'SAFE ✅' : 'UNSAFE ❌');
+    currentEl.className   = 'status ' + (isSafe ? 'safe' : 'unsafe');
+
+    // Future status (use point1 as next predicted status)
+    const futureEl        = document.getElementById('futureStatus');
+    const futureSafe      = d.point1 && d.point1.status == 1;
+    futureEl.innerText    = 'Future: '  + (futureSafe ? 'SAFE ✅' : 'UNSAFE ❌');
+    futureEl.className    = 'status '   + (futureSafe ? 'safe' : 'unsafe');
+
+    // Last updated timestamp
+    document.getElementById('lastUpdated').innerText = d.last_updated || '--';
+
+    updateCharts(d);
+});
+
+// ===== START =====
+initCharts();
 </script>
 
 </body>
