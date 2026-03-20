@@ -526,7 +526,7 @@ onValue(ref(database, 'predictions'), (snapshot) => {
 });
 
 // Metrics from MATLAB
-onValue(ref(database, 'metrics'), (snapshot) => {
+onValue(ref(database, 'metrics/realtime'), (snapshot) => {
     const d = snapshot.val();
     if (!d) return;
 
