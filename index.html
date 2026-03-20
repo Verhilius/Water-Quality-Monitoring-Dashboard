@@ -99,6 +99,61 @@
             font-size: 0.85em;
         }
 
+        /* Metrics table */
+        .metrics-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 4px;
+        }
+
+        .metrics-table th {
+            text-align: center;
+            font-size: 0.8em;
+            color: #94a3b8;
+            padding: 4px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .metrics-table td {
+            text-align: center;
+            font-size: 0.85em;
+            padding: 5px 4px;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .metrics-table td:first-child {
+            text-align: left;
+            color: #94a3b8;
+        }
+
+        .metrics-table td:nth-child(2) {
+            color: #fbbf24;
+            font-weight: bold;
+        }
+
+        .metrics-table td:nth-child(3) {
+            color: #34d399;
+            font-weight: bold;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .metrics-card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .metrics-card h2 {
+            color: #94a3b8;
+            font-size: 1em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
         .divider {
             border: none;
             border-top: 1px solid #334155;
@@ -123,6 +178,7 @@
         @media (max-width: 768px) {
             .container { grid-template-columns: 1fr; }
             .inset-chart { width: 40%; height: 35%; }
+            .full-width { grid-column: 1; }
         }
     </style>
 </head>
@@ -180,7 +236,7 @@
                 <tr>
                     <td>⚡ EC</td>
                     <td id="live-ec">--</td>
-                    <td>mS/cm</td>
+                    <td>µS/cm</td>
                 </tr>
                 <tr>
                     <td>🌊 Salinity</td>
@@ -195,7 +251,7 @@
                 <tr>
                     <td>💧 TDS</td>
                     <td id="live-tds">--</td>
-                    <td>ppm</td>
+                    <td>mg/L</td>
                 </tr>
             </table>
         </div>
@@ -212,6 +268,50 @@
 
         <p class="last-updated">
             Last prediction update: <span id="lastUpdated">--</span>
+        </p>
+    </div>
+
+    <!-- MAPE and RMSE full width card -->
+    <div class="metrics-card full-width">
+        <h2>📊 Forecast Accuracy Metrics</h2>
+        <table class="metrics-table">
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>RMSE</th>
+                    <th>MAPE (%)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>🌡️ Temperature (°C)</td>
+                    <td id="rmse-temp">--</td>
+                    <td id="mape-temp">--</td>
+                </tr>
+                <tr>
+                    <td>⚡ EC (µS/cm)</td>
+                    <td id="rmse-ec">--</td>
+                    <td id="mape-ec">--</td>
+                </tr>
+                <tr>
+                    <td>🌊 Salinity (ppt)</td>
+                    <td id="rmse-sal">--</td>
+                    <td id="mape-sal">--</td>
+                </tr>
+                <tr>
+                    <td>🧪 pH</td>
+                    <td id="rmse-ph">--</td>
+                    <td id="mape-ph">--</td>
+                </tr>
+                <tr>
+                    <td>💧 TDS (mg/L)</td>
+                    <td id="rmse-tds">--</td>
+                    <td id="mape-tds">--</td>
+                </tr>
+            </tbody>
+        </table>
+        <p class="last-updated" style="margin-top: 8px;">
+            Last metrics update: <span id="metricsUpdated">--</span>
         </p>
     </div>
 
@@ -235,10 +335,10 @@ const database = getDatabase(app);
 // ===== CHART DEFINITIONS =====
 const chartConfigs = {
     temp: { id: 'tempChart', insetId: 'tempInset', title: 'Temperature vs Time', unit: '°C',    field: 'temperature' },
-    ec:   { id: 'ecChart',   insetId: 'ecInset',   title: 'EC vs Time',          unit: 'mS/cm', field: 'ec'          },
+    ec:   { id: 'ecChart',   insetId: 'ecInset',   title: 'EC vs Time',          unit: 'µS/cm', field: 'ec'          },
     sal:  { id: 'salChart',  insetId: 'salInset',  title: 'Salinity vs Time',    unit: 'ppt',   field: 'salinity'    },
     ph:   { id: 'phChart',   insetId: 'phInset',   title: 'pH vs Time',          unit: 'pH',    field: 'ph'          },
-    tds:  { id: 'tdsChart',  insetId: 'tdsInset',  title: 'TDS vs Time',         unit: 'ppm',   field: 'tds'         },
+    tds:  { id: 'tdsChart',  insetId: 'tdsInset',  title: 'TDS vs Time',         unit: 'mg/L',  field: 'tds'         },
 };
 
 const charts      = {};
@@ -381,10 +481,9 @@ onValue(ref(database, 'sensors'), (snapshot) => {
     const d = snapshot.val();
     if (!d) return;
 
-    // Update live readings
     document.getElementById('live-temp').innerText = Number(d.temperature).toFixed(2);
     document.getElementById('live-ec').innerText   = Number(d.ec).toFixed(2);
-    document.getElementById('live-sal').innerText  = Number(d.salinity).toFixed(2);
+    document.getElementById('live-sal').innerText  = Number(d.salinity).toFixed(4);
     document.getElementById('live-ph').innerText   = Number(d.ph).toFixed(2);
     document.getElementById('live-tds').innerText  = Number(d.tds).toFixed(2);
 
@@ -402,7 +501,6 @@ onValue(ref(database, 'sensors'), (snapshot) => {
     historyData.ph.push(d.ph);
     historyData.tds.push(d.tds);
 
-    // Keep only last MAX_POINTS
     for (const key of Object.keys(historyData)) {
         if (historyData[key].length > MAX_POINTS) historyData[key].shift();
     }
@@ -410,14 +508,13 @@ onValue(ref(database, 'sensors'), (snapshot) => {
     updateMainCharts();
 });
 
-// Predictions from MATLAB via Firebase
+// Predictions from MATLAB
 onValue(ref(database, 'predictions'), (snapshot) => {
     const d = snapshot.val();
     if (!d) return;
 
     latestPredictions = d;
 
-    // Future status from MATLAB
     const futureEl   = document.getElementById('futureStatus');
     const futureSafe = d.point1 && d.point1.status == 1;
     futureEl.innerText  = 'Future: '  + (futureSafe ? 'SAFE ✅' : 'UNSAFE ❌');
@@ -426,6 +523,28 @@ onValue(ref(database, 'predictions'), (snapshot) => {
     document.getElementById('lastUpdated').innerText = d.last_updated || '--';
 
     updateInsetCharts(d);
+});
+
+// Metrics from MATLAB
+onValue(ref(database, 'metrics'), (snapshot) => {
+    const d = snapshot.val();
+    if (!d) return;
+
+    // Helper to safely display metric value
+    const fmt = (val, decimals) => val !== undefined ? Number(val).toFixed(decimals) : '--';
+
+    document.getElementById('rmse-temp').innerText = fmt(d.temperature?.rmse, 4);
+    document.getElementById('mape-temp').innerText = fmt(d.temperature?.mape, 2);
+    document.getElementById('rmse-ec').innerText   = fmt(d.ec?.rmse,          4);
+    document.getElementById('mape-ec').innerText   = fmt(d.ec?.mape,          2);
+    document.getElementById('rmse-sal').innerText  = fmt(d.salinity?.rmse,    4);
+    document.getElementById('mape-sal').innerText  = fmt(d.salinity?.mape,    2);
+    document.getElementById('rmse-ph').innerText   = fmt(d.ph?.rmse,          4);
+    document.getElementById('mape-ph').innerText   = fmt(d.ph?.mape,          2);
+    document.getElementById('rmse-tds').innerText  = fmt(d.tds?.rmse,         4);
+    document.getElementById('mape-tds').innerText  = fmt(d.tds?.mape,         2);
+
+    document.getElementById('metricsUpdated').innerText = d.last_updated || '--';
 });
 
 // ===== START =====
